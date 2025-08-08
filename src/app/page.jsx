@@ -26,18 +26,20 @@ export default function Page() {
     const [quality, setQuality] = useState('480');
     const [progress, setProgress] = useState(0);
     const [error, setError] = useState('');
+    const [controller, setController] = useState(null);
+    const [isActive, setIsActive] = useState(false);
 
     useEffect(() => {
         const socket = io({
             path: '/api/socketio',
         });
         socket.on('download-progress', data => {
-            setProgress(prev => (data.percent > prev ? data.percent : prev));
+            setProgress(prev => (isActive && data.percent > prev ? data.percent : prev));
         });
         return () => {
             socket.disconnect();
         };
-    }, []);
+    }, [isActive]);
 
     const [play] = useSound('/sounds/notification-sound.mp3', {
         volume: 0.3,
@@ -68,11 +70,16 @@ export default function Page() {
         setError('');
 
         setLoading(true);
+        setIsActive(true);
+        const abortController = new AbortController();
+        setController(abortController);
+
         try {
             const res = await fetch('/api/convert', {
                 method: 'POST',
-                body: JSON.stringify({ url, format, quality }),
+                body: JSON.stringify({ url, format, ...(format === 'mp4' && { quality }) }),
                 headers: { 'Content-Type': 'application/json' },
+                signal: abortController.signal,
             });
 
             const filename = decodeURIComponent(res.headers.get('X-Filename') || 'audio');
@@ -91,10 +98,23 @@ export default function Page() {
             play();
             setProgress(0);
         } catch (error) {
+            if (error.name === 'AbortError') return;
             console.error(error);
-            toast.error('Ошибка :с');
+            toast.error('Ошибка :(');
         } finally {
             setLoading(false);
+            setController(null);
+            setIsActive(false);
+        }
+    };
+
+    const handleCancel = () => {
+        if (controller) {
+            controller.abort();
+            setController(null);
+            setIsActive(false);
+            setLoading(false);
+            setProgress(0);
         }
     };
 
@@ -142,8 +162,11 @@ export default function Page() {
                             </SelectContent>
                         </Select>
                     )}
-                    <Button onClick={handleSubmit} disabled={loading} className="w-full sm:w-auto">
-                        {loading ? 'Минутку..' : 'Конвектировать'}
+                    <Button
+                        onClick={controller ? handleCancel : handleSubmit}
+                        className="w-full sm:w-auto"
+                    >
+                        {controller ? 'Отменить' : loading ? 'Минутку..' : 'Конвектировать'}
                     </Button>
                 </div>
                 <div className="min-h-[70px] flex items-center justify-center">
@@ -165,6 +188,17 @@ export default function Page() {
             >
                 {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
+            <div className="absolute bottom-4 text-center text-zinc-400 text-sm">
+                Created by{' '}
+                <a
+                    href="https://t.me/maminakyrtka"
+                    className="underline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    maminakyrtka
+                </a>
+            </div>
         </div>
     );
 }

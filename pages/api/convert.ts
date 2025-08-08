@@ -4,6 +4,16 @@ import { spawn, execSync } from 'child_process';
 import { promises as fs } from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
 
+function sanitizeFilename(name: string) {
+    return name
+        .normalize('NFC')
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+        .replace(/[\r\n\t]/g, '')
+        .trim()
+        .replace(/[/\\?%*:|"<>]/g, '')
+        .replace(/"/g, "'");
+}
+
 export const config = {
     api: { bodyParser: true },
 };
@@ -23,7 +33,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let title = 'audio';
     try {
         const outputTitle = execSync(`yt-dlp --get-title ${videoUrl}`).toString().trim();
-        if (outputTitle) title = outputTitle.replace(/[^\w\s\-\.]+/g, '').trim();
+        if (outputTitle) {
+            title = outputTitle.replace(/[/\\?%*:|"<>]/g, '').trim();
+        }
     } catch {
         console.warn('Не удалось получить название видео');
     }
@@ -35,53 +47,78 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let formatArg = 'bestaudio';
         if (format === 'mp4') {
             if (quality === 'best') {
-                formatArg = 'bestvideo+bestaudio';
+                formatArg = 'bestvideo+bestaudio/best';
             } else {
-                formatArg = `best[height<=${quality}]`;
+                formatArg = `bestvideo[height<=${quality}]+bestaudio/best`;
             }
-        } else {
-            formatArg = 'bestaudio';
         }
 
-        await new Promise((resolve, reject) => {
-            const ytDlp = spawn('yt-dlp', [
-                '--no-cache-dir',
-                '--no-download-archive',
-                '--no-part',
-                '--no-continue',
-                '--force-overwrites',
-                '-f',
-                formatArg,
-                '-o',
-                downloaded.path,
-                videoUrl,
-            ]);
+        await new Promise(async (resolve, reject) => {
+            const tryDownload = (formatToUse: string) => {
+                return new Promise((res, rej) => {
+                    const ytDlp = spawn('yt-dlp', [
+                        '--no-cache-dir',
+                        '--no-download-archive',
+                        '--no-part',
+                        '--no-continue',
+                        '--force-overwrites',
+                        '-f',
+                        formatToUse,
+                        '-o',
+                        downloaded.path,
+                        videoUrl,
+                    ]);
 
-            ytDlp.stdout.on('data', data => {
-                const str = data.toString();
-                const match = str.match(/\[download\]\s+([\d\.]+)%/);
-                if (match) {
-                    const percent = parseFloat(match[1]);
-                    io.emit('download-progress', { percent });
-                }
-            });
+                    ytDlp.stdout.on('data', data => {
+                        const str = data.toString();
+                        const match = str.match(/\[download\]\s+([\d\.]+)%/);
+                        if (match) {
+                            const percent = parseFloat(match[1]);
+                            io.emit('download-progress', { percent });
+                        }
+                    });
 
-            ytDlp.stderr.on('data', data => {
-                console.error(`yt-dlp stderr: ${data}`);
-            });
+                    ytDlp.stderr.on('data', data => {
+                        console.error(`yt-dlp stderr: ${data}`);
+                    });
 
-            ytDlp.on('close', async code => {
-                if (code === 0) {
-                    const stats = await fs.stat(downloaded.path);
-                    if (stats.size === 0) {
-                        reject(new Error('yt-dlp создал пустой файл'));
-                    } else {
+                    ytDlp.on('close', async code => {
+                        if (code === 0) {
+                            try {
+                                const stats = await fs.stat(downloaded.path);
+                                if (stats.size === 0) {
+                                    rej(new Error('yt-dlp создал пустой файл'));
+                                } else {
+                                    res(null);
+                                }
+                            } catch (e) {
+                                rej(e);
+                            }
+                        } else {
+                            rej(new Error(`yt-dlp exited with code ${code}`));
+                        }
+                    });
+                });
+            };
+
+            try {
+                await tryDownload(formatArg);
+                resolve(null);
+            } catch (error) {
+                if (formatArg !== 'bestvideo+bestaudio/best') {
+                    console.warn(
+                        'Первый формат не сработал, пробуем fallback bestvideo+bestaudio/best'
+                    );
+                    try {
+                        await tryDownload('bestvideo+bestaudio/best');
                         resolve(null);
+                    } catch (error2) {
+                        reject(error2);
                     }
                 } else {
-                    reject(new Error(`yt-dlp exited with code ${code}`));
+                    reject(error);
                 }
-            });
+            }
         });
 
         await new Promise((resolve, reject) => {
@@ -106,8 +143,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             'Content-Type',
             format === 'mp4' ? 'video/mp4' : format === 'wav' ? 'audio/wav' : 'audio/mpeg'
         );
-        res.setHeader('Content-Disposition', `attachment; filename="${title}.${format}"`);
-        res.setHeader('X-Filename', encodeURIComponent(title));
+
+        const safeTitle = sanitizeFilename(title).replace(/\s+/g, '_');
+        const disposition = `attachment; filename*=UTF-8''${encodeURIComponent(safeTitle)}.${format}`;
+        res.setHeader('Content-Disposition', disposition);
+        res.setHeader('X-Filename', encodeURIComponent(safeTitle));
         return res.status(200).send(buffer);
     } catch (error) {
         console.error('Ошибка при обработке:', error);
