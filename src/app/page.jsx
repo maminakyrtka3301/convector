@@ -119,7 +119,7 @@ export default function Page() {
     };
 
     return (
-        <div className="relative flex gap-2 h-full flex flex-col justify-center items-center gap-24 mx-auto p-4 md:p-10 md:pb-[5%]">
+        <div className="relative min-h-[100dvh] flex flex-col justify-center items-center gap-24 mx-auto p-4 md:p-10 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <div className="flex w-full justify-center gap-4">
                 <Image src="/images/convector_logo.png" height={230} width={250} alt="Логотип" />
                 <div className="flex flex-col justify-center">
@@ -183,12 +183,16 @@ export default function Page() {
             </div>
             <button
                 onClick={() => setTheme(isDark ? 'light' : 'dark')}
-                className="absolute bottom-6 left-6 bg-muted hover:bg-muted/80 transition-colors p-3 rounded-full shadow-lg z-50"
+                className="absolute left-6 bg-muted hover:bg-muted/80 transition-colors p-3 rounded-full shadow-lg z-50"
+                style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
                 aria-label="Сменить тему"
             >
                 {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
-            <div className="absolute bottom-6 text-center text-zinc-400 text-sm">
+            <div
+                className="absolute inset-x-0 text-center text-zinc-400 text-sm"
+                style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
+            >
                 Created by{' '}
                 <a
                     href="https://t.me/maminakyrtka"

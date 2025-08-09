@@ -30,11 +30,17 @@ export const metadata = {
     },
 };
 
+export const viewport = {
+    width: 'device-width',
+    initialScale: 1,
+    viewportFit: 'cover',
+};
+
 export default function RootLayout({ children }) {
     return (
         <html lang="en">
             <body
-                className={`${geistSans.variable} ${geistMono.variable} antialiased h-[100vh] bg-zinc-100 dark:bg-zinc-900`}
+                className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-[100dvh] overflow-x-hidden bg-zinc-100 dark:bg-zinc-900`}
             >
                 <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
                     <PwaProvider />
