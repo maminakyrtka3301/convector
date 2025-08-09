@@ -183,12 +183,12 @@ export default function Page() {
             </div>
             <button
                 onClick={() => setTheme(isDark ? 'light' : 'dark')}
-                className="absolute bottom-4 left-4 bg-muted hover:bg-muted/80 transition-colors p-3 rounded-full shadow-lg z-50"
+                className="absolute bottom-6 left-6 bg-muted hover:bg-muted/80 transition-colors p-3 rounded-full shadow-lg z-50"
                 aria-label="Сменить тему"
             >
                 {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
-            <div className="absolute bottom-4 text-center text-zinc-400 text-sm">
+            <div className="absolute bottom-6 text-center text-zinc-400 text-sm">
                 Created by{' '}
                 <a
                     href="https://t.me/maminakyrtka"
